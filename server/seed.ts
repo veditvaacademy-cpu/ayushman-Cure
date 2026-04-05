@@ -313,6 +313,26 @@ export function seed() {
           );
         });
       }
+
+      // Seed Ayushman Packages
+      const ayushmanPackageCount = db.prepare("SELECT COUNT(*) as count FROM ayushman_packages").get();
+      if ((ayushmanPackageCount as any).count === 0) {
+        const ayushmanPackages = [
+          { code: 'S10001', name: 'Appendectomy', specialty: 'General Surgery', amount: 15000 },
+          { code: 'S10002', name: 'Cholecystectomy', specialty: 'General Surgery', amount: 18000 },
+          { code: 'S10003', name: 'Hernia Repair (Unilateral)', specialty: 'General Surgery', amount: 12000 },
+          { code: 'C20001', name: 'Normal Delivery', specialty: 'Obstetrics', amount: 9000 },
+          { code: 'C20002', name: 'C-Section', specialty: 'Obstetrics', amount: 16000 },
+          { code: 'O30001', name: 'Total Knee Replacement', specialty: 'Orthopedics', amount: 80000 },
+          { code: 'O30002', name: 'Hip Replacement', specialty: 'Orthopedics', amount: 95000 },
+          { code: 'K40001', name: 'Dialysis (Per Session)', specialty: 'Nephrology', amount: 1500 }
+        ];
+        ayushmanPackages.forEach(pkg => {
+          db.prepare("INSERT INTO ayushman_packages (package_code, package_name, specialty, amount) VALUES (?, ?, ?, ?)").run(
+            pkg.code, pkg.name, pkg.specialty, pkg.amount
+          );
+        });
+      }
     }
   }
 }

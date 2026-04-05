@@ -120,6 +120,38 @@ db.exec(`
     FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id)
   );
 
+  CREATE TABLE IF NOT EXISTS nursing_handovers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admission_id INTEGER NOT NULL,
+    from_nurse TEXT,
+    to_nurse TEXT,
+    clinical_summary TEXT,
+    pending_tasks TEXT,
+    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ipd_intake_output (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admission_id INTEGER NOT NULL,
+    intake_type TEXT,
+    intake_amount TEXT,
+    output_type TEXT,
+    output_amount TEXT,
+    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ipd_doctor_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admission_id INTEGER NOT NULL,
+    doctor_id INTEGER NOT NULL,
+    note TEXT,
+    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id),
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+  );
+
   CREATE TABLE IF NOT EXISTS ipd_consultant_rounds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     admission_id INTEGER NOT NULL,
@@ -428,14 +460,15 @@ db.exec(`
     FOREIGN KEY (test_id) REFERENCES lab_test_catalog(id)
   );
 
-  CREATE TABLE IF NOT EXISTS lab_orders (
+  CREATE TABLE IF NOT EXISTS lab_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     hospital_id INTEGER NOT NULL,
     patient_id INTEGER NOT NULL,
     doctor_id INTEGER NOT NULL,
     visit_id INTEGER, -- OPD
     admission_id INTEGER, -- IPD
-    order_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
     status TEXT DEFAULT 'Pending', -- Pending, Collected, Processing, Completed, Cancelled
     priority TEXT DEFAULT 'Routine', -- Routine, Urgent, STAT
     notes TEXT,
@@ -446,16 +479,24 @@ db.exec(`
     FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id)
   );
 
+  CREATE TABLE IF NOT EXISTS lab_request_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    test_id INTEGER NOT NULL,
+    FOREIGN KEY (request_id) REFERENCES lab_requests(id),
+    FOREIGN KEY (test_id) REFERENCES lab_test_catalog(id)
+  );
+
   CREATE TABLE IF NOT EXISTS lab_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL,
+    request_id INTEGER NOT NULL,
     test_id INTEGER NOT NULL,
-    result_value TEXT,
+    value TEXT,
     is_abnormal INTEGER DEFAULT 0,
-    performed_at DATETIME,
+    notes TEXT,
+    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     performed_by TEXT,
-    device_id TEXT, -- For device integration tracking
-    FOREIGN KEY (order_id) REFERENCES lab_orders(id),
+    FOREIGN KEY (request_id) REFERENCES lab_requests(id),
     FOREIGN KEY (test_id) REFERENCES lab_test_catalog(id)
   );
 
@@ -469,7 +510,7 @@ db.exec(`
     FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
   );
 
-  CREATE TABLE IF NOT EXISTS radiology_orders (
+  CREATE TABLE IF NOT EXISTS radiology_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     hospital_id INTEGER NOT NULL,
     patient_id INTEGER NOT NULL,
@@ -478,7 +519,8 @@ db.exec(`
     status TEXT DEFAULT 'Pending',
     priority TEXT DEFAULT 'Routine',
     clinical_history TEXT,
-    order_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
     FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
     FOREIGN KEY (patient_id) REFERENCES patients(id),
     FOREIGN KEY (doctor_id) REFERENCES doctors(id),
@@ -487,14 +529,15 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS radiology_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL,
+    request_id INTEGER NOT NULL,
+    test_id INTEGER,
     findings TEXT,
     impression TEXT,
     image_url TEXT,
-    dicom_metadata TEXT,
+    notes TEXT,
     reported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     reported_by TEXT,
-    FOREIGN KEY (order_id) REFERENCES radiology_orders(id)
+    FOREIGN KEY (request_id) REFERENCES radiology_requests(id)
   );
 
   CREATE TABLE IF NOT EXISTS appointments (
@@ -847,6 +890,69 @@ db.exec(`
     FOREIGN KEY (admission_id) REFERENCES ipd_admissions(id),
     FOREIGN KEY (patient_id) REFERENCES patients(id),
     FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ayushman_packages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    package_code TEXT UNIQUE NOT NULL,
+    package_name TEXT NOT NULL,
+    specialty TEXT NOT NULL,
+    amount REAL NOT NULL,
+    description TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ayushman_registrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id INTEGER NOT NULL,
+    patient_id INTEGER NOT NULL,
+    pmjay_id TEXT UNIQUE NOT NULL,
+    family_id TEXT,
+    card_status TEXT DEFAULT 'Active', -- Active, Inactive
+    ekyc_status TEXT DEFAULT 'Verified',
+    FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    FOREIGN KEY (patient_id) REFERENCES patients(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ayushman_pre_auths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id INTEGER NOT NULL,
+    registration_id INTEGER NOT NULL,
+    package_id INTEGER NOT NULL,
+    requested_amount REAL NOT NULL,
+    status TEXT DEFAULT 'Pending', -- Pending, Approved, Rejected, More Info
+    approval_number TEXT,
+    approved_amount REAL,
+    request_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    clinical_notes TEXT,
+    documents_json TEXT,
+    FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    FOREIGN KEY (registration_id) REFERENCES ayushman_registrations(id),
+    FOREIGN KEY (package_id) REFERENCES ayushman_packages(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ayushman_claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id INTEGER NOT NULL,
+    pre_auth_id INTEGER NOT NULL,
+    claim_number TEXT UNIQUE NOT NULL,
+    claim_amount REAL NOT NULL,
+    status TEXT DEFAULT 'Submitted', -- Submitted, Under Process, Settled, Rejected
+    settlement_date DATE,
+    settlement_amount REAL,
+    rejection_reason TEXT,
+    submission_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+    FOREIGN KEY (pre_auth_id) REFERENCES ayushman_pre_auths(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ayushman_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id INTEGER NOT NULL,
+    action_type TEXT NOT NULL,
+    details TEXT,
+    performed_by TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
   );
 `);
 

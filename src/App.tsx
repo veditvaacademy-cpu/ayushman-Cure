@@ -159,8 +159,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   LAB_TECH: ['dashboard', 'laboratory'],
   RADIO_TECH: ['dashboard', 'radiology'],
   PHARMACY: ['dashboard', 'pharmacy', 'billing'],
-  BILLING: ['dashboard', 'billing'],
-  RECEPTION: ['dashboard', 'patients', 'appointments', 'billing', 'whatsapp', 'opd'],
+  BILLING: ['dashboard', 'billing', 'ayushman'],
+  RECEPTION: ['dashboard', 'patients', 'appointments', 'billing', 'whatsapp', 'opd', 'ayushman'],
   OT_COORDINATOR: ['dashboard', 'ot'],
   HR_ADMIN: ['dashboard', 'statutory', 'safety', 'hr'],
   AMBULANCE_OPERATOR: ['dashboard', 'ambulance'],
@@ -4619,6 +4619,466 @@ const PharmacyManagement = ({ hospitalId }: { hospitalId: number }) => {
           </Card>
         </div>
       )}
+    </div>
+  );
+};
+
+const AyushmanManagement = ({ hospitalId }: { hospitalId: number }) => {
+  const [activeTab, setActiveTab] = useState<'bis' | 'registrations' | 'preauth' | 'claims' | 'audit'>('bis');
+  const [searchType, setSearchType] = useState<'pmjay_id' | 'family_id' | 'aadhaar'>('pmjay_id');
+  const [searchValue, setSearchValue] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [registrations, setRegistrations] = useState<any[]>([]);
+  const [packages, setPackages] = useState<any[]>([]);
+  const [preAuths, setPreAuths] = useState<any[]>([]);
+  const [claims, setClaims] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showRegModal, setShowRegModal] = useState(false);
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState<any>(null);
+  const [localPatients, setLocalPatients] = useState<Patient[]>([]);
+  const [selectedLocalPatient, setSelectedLocalPatient] = useState('');
+  const [showPreAuthModal, setShowPreAuthModal] = useState(false);
+  const [selectedReg, setSelectedReg] = useState<any>(null);
+  const [preAuthData, setPreAuthData] = useState({
+    package_id: '',
+    requested_amount: 0,
+    clinical_notes: ''
+  });
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [rRes, pRes, paRes, cRes, lRes] = await Promise.all([
+        fetch(`/api/ayushman/registrations?hospitalId=${hospitalId}`),
+        fetch(`/api/ayushman/packages`),
+        fetch(`/api/ayushman/pre-auths?hospitalId=${hospitalId}`),
+        fetch(`/api/ayushman/claims?hospitalId=${hospitalId}`),
+        fetch(`/api/patients?hospitalId=${hospitalId}`)
+      ]);
+      setRegistrations(await rRes.json());
+      setPackages(await pRes.json());
+      setPreAuths(await paRes.json());
+      setClaims(await cRes.json());
+      setLocalPatients(await lRes.json());
+    } catch (error) {
+      console.error("Error fetching Ayushman data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [hospitalId]);
+
+  const handleBISSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/ayushman/beneficiaries/search?type=${searchType}&value=${searchValue}`);
+      setSearchResults(await res.json());
+    } catch (error) {
+      console.error("BIS Search error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!selectedLocalPatient || !selectedBeneficiary) return;
+    try {
+      const res = await fetch('/api/ayushman/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospital_id: hospitalId,
+          patient_id: parseInt(selectedLocalPatient),
+          pmjay_id: selectedBeneficiary.pmjay_id,
+          family_id: selectedBeneficiary.family_id
+        })
+      });
+      if (res.ok) {
+        setShowRegModal(false);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+    }
+  };
+
+  const handlePreAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/ayushman/pre-auths', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospital_id: hospitalId,
+          registration_id: selectedReg.id,
+          ...preAuthData
+        })
+      });
+      if (res.ok) {
+        setShowPreAuthModal(false);
+        fetchData();
+      }
+    } catch (error) {
+      console.error("Pre-auth error:", error);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-primary/5 p-6 rounded-2xl border border-primary/10">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg">
+            <ShieldCheck size={24} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-text">Ayushman Bharat (PM-JAY)</h2>
+            <p className="text-text/60">Beneficiary Identification & Claims Management System</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setActiveTab('bis')}
+            className={clsx("px-4 py-2 rounded-lg font-medium transition-all", activeTab === 'bis' ? "bg-primary text-white shadow-md" : "bg-white text-text/60 hover:bg-primary/5")}
+          >
+            BIS Search
+          </button>
+          <button 
+            onClick={() => setActiveTab('registrations')}
+            className={clsx("px-4 py-2 rounded-lg font-medium transition-all", activeTab === 'registrations' ? "bg-primary text-white shadow-md" : "bg-white text-text/60 hover:bg-primary/5")}
+          >
+            Registrations
+          </button>
+          <button 
+            onClick={() => setActiveTab('preauth')}
+            className={clsx("px-4 py-2 rounded-lg font-medium transition-all", activeTab === 'preauth' ? "bg-primary text-white shadow-md" : "bg-white text-text/60 hover:bg-primary/5")}
+          >
+            Pre-Auth
+          </button>
+          <button 
+            onClick={() => setActiveTab('claims')}
+            className={clsx("px-4 py-2 rounded-lg font-medium transition-all", activeTab === 'claims' ? "bg-primary text-white shadow-md" : "bg-white text-text/60 hover:bg-primary/5")}
+          >
+            Claims
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'bis' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card title="Beneficiary Identification System (BIS)" className="lg:col-span-1">
+            <form onSubmit={handleBISSearch} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-text/40 uppercase tracking-wider">Search By</label>
+                <select 
+                  className="w-full px-4 py-2 rounded-lg border border-black/10 mt-1"
+                  value={searchType}
+                  onChange={(e: any) => setSearchType(e.target.value)}
+                >
+                  <option value="pmjay_id">PM-JAY ID</option>
+                  <option value="family_id">Family ID / Ration Card</option>
+                  <option value="aadhaar">Aadhaar Number</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-text/40 uppercase tracking-wider">Value</label>
+                <input 
+                  type="text"
+                  className="w-full px-4 py-2 rounded-lg border border-black/10 mt-1"
+                  placeholder="Enter search value..."
+                  value={searchValue}
+                  onChange={e => setSearchValue(e.target.value)}
+                  required
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={loading}
+                className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                {loading ? <Clock className="animate-spin" size={20} /> : <Search size={20} />}
+                Search BIS
+              </button>
+            </form>
+          </Card>
+
+          <Card title="Search Results" className="lg:col-span-2">
+            <div className="space-y-4">
+              {searchResults.map((b, idx) => (
+                <div key={idx} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-bg rounded-xl border border-black/5 gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                      <LucideUser size={20} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-text">{b.name}</p>
+                      <p className="text-xs text-text/60">{b.pmjay_id} | {b.age}Y | {b.gender}</p>
+                      <p className="text-[10px] text-primary font-medium mt-1">Family ID: {b.family_id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <Badge variant={b.card_status === 'Active' ? 'success' : 'error'}>{b.card_status}</Badge>
+                    <button 
+                      onClick={() => {
+                        setSelectedBeneficiary(b);
+                        setShowRegModal(true);
+                      }}
+                      className="flex-1 md:flex-none bg-primary text-white px-4 py-2 rounded-lg text-sm font-bold hover:shadow-lg transition-all"
+                    >
+                      Register
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {searchResults.length === 0 && !loading && (
+                <div className="text-center py-12 text-text/40">
+                  <Search size={48} className="mx-auto mb-4 opacity-20" />
+                  <p>Search for a beneficiary to see results</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'registrations' && (
+        <Card title="Ayushman Registered Patients">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-black/5">
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Patient</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">PM-JAY ID</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Family ID</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Status</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5">
+                {registrations.map(r => (
+                  <tr key={r.id} className="group hover:bg-bg/50 transition-colors">
+                    <td className="py-4">
+                      <p className="font-bold text-text">{r.patient_name}</p>
+                      <p className="text-xs text-text/40">{r.patient_id_str}</p>
+                    </td>
+                    <td className="py-4 font-mono text-sm">{r.pmjay_id}</td>
+                    <td className="py-4 text-sm text-text/60">{r.family_id}</td>
+                    <td className="py-4">
+                      <Badge variant={r.card_status === 'Active' ? 'success' : 'error'}>{r.card_status}</Badge>
+                    </td>
+                    <td className="py-4 text-right">
+                      <button 
+                        onClick={() => {
+                          setSelectedReg(r);
+                          setShowPreAuthModal(true);
+                        }}
+                        className="text-primary hover:underline text-sm font-bold"
+                      >
+                        New Pre-Auth
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'preauth' && (
+        <Card title="Pre-Authorization Requests">
+          <div className="space-y-4">
+            {preAuths.map(pa => (
+              <div key={pa.id} className="p-4 bg-bg rounded-xl border border-black/5 flex flex-col md:flex-row justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="font-bold text-text">{pa.patient_name}</p>
+                    <Badge variant={pa.status === 'Approved' ? 'success' : pa.status === 'Pending' ? 'alert' : 'error'}>
+                      {pa.status}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-text/60 font-medium">{pa.package_name} ({pa.package_code})</p>
+                  <p className="text-xs text-text/40 mt-1">Requested: ₹{pa.requested_amount.toLocaleString()} | {new Date(pa.request_date).toLocaleDateString()}</p>
+                </div>
+                <div className="flex flex-col items-end justify-center gap-2">
+                  {pa.approval_number && (
+                    <p className="text-xs font-bold text-success">Auth #: {pa.approval_number}</p>
+                  )}
+                  {pa.status === 'Approved' && !claims.find(c => c.pre_auth_id === pa.id) && (
+                    <button 
+                      onClick={async () => {
+                        const claimNum = "CLM-" + Math.random().toString(36).substr(2, 8).toUpperCase();
+                        await fetch('/api/ayushman/claims', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            hospital_id: hospitalId,
+                            pre_auth_id: pa.id,
+                            claim_number: claimNum,
+                            claim_amount: pa.approved_amount || pa.requested_amount
+                          })
+                        });
+                        fetchData();
+                      }}
+                      className="bg-success text-white px-4 py-2 rounded-lg text-xs font-bold"
+                    >
+                      Submit Claim
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'claims' && (
+        <Card title="Ayushman Claims Tracking">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-black/5">
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Claim Details</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Patient</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Amount</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Status</th>
+                  <th className="pb-4 font-semibold text-text/40 uppercase text-xs tracking-wider">Settlement</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/5">
+                {claims.map(c => (
+                  <tr key={c.id}>
+                    <td className="py-4">
+                      <p className="font-bold text-text">{c.claim_number}</p>
+                      <p className="text-xs text-text/40">Auth: {c.approval_number}</p>
+                    </td>
+                    <td className="py-4 text-sm font-medium">{c.patient_name}</td>
+                    <td className="py-4 text-sm font-bold">₹{c.claim_amount.toLocaleString()}</td>
+                    <td className="py-4">
+                      <Badge variant={c.status === 'Settled' ? 'success' : 'info'}>{c.status}</Badge>
+                    </td>
+                    <td className="py-4">
+                      {c.settlement_amount ? (
+                        <div>
+                          <p className="text-sm font-bold text-success">₹{c.settlement_amount.toLocaleString()}</p>
+                          <p className="text-[10px] text-text/40">{new Date(c.settlement_date).toLocaleDateString()}</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text/40 italic">Pending Settlement</p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Modals */}
+      <AnimatePresence>
+        {showRegModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl"
+            >
+              <h3 className="text-2xl font-bold text-text mb-6">Register Ayushman Beneficiary</h3>
+              <div className="space-y-4">
+                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                  <p className="text-xs font-bold text-primary uppercase mb-1">Beneficiary Info</p>
+                  <p className="font-bold text-text">{selectedBeneficiary?.name}</p>
+                  <p className="text-sm text-text/60">{selectedBeneficiary?.pmjay_id}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text/40 uppercase tracking-wider">Link to Local Patient</label>
+                  <select 
+                    className="w-full px-4 py-2 rounded-lg border border-black/10 mt-1"
+                    value={selectedLocalPatient}
+                    onChange={e => setSelectedLocalPatient(e.target.value)}
+                  >
+                    <option value="">Select Patient...</option>
+                    {localPatients.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.patient_id_str})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button onClick={() => setShowRegModal(false)} className="flex-1 py-3 text-text/60 font-bold">Cancel</button>
+                  <button onClick={handleRegister} className="flex-1 bg-primary text-white py-3 rounded-xl font-bold shadow-lg">Confirm Registration</button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showPreAuthModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl"
+            >
+              <h3 className="text-2xl font-bold text-text mb-6">New Pre-Authorization Request</h3>
+              <form onSubmit={handlePreAuthSubmit} className="space-y-4">
+                <div className="p-4 bg-bg rounded-2xl border border-black/5">
+                  <p className="text-xs font-bold text-text/40 uppercase mb-1">Patient</p>
+                  <p className="font-bold text-text">{selectedReg?.patient_name}</p>
+                  <p className="text-sm text-text/60">PM-JAY ID: {selectedReg?.pmjay_id}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text/40 uppercase tracking-wider">Select Package</label>
+                  <select 
+                    className="w-full px-4 py-2 rounded-lg border border-black/10 mt-1"
+                    value={preAuthData.package_id}
+                    onChange={e => {
+                      const pkg = packages.find(p => p.id === parseInt(e.target.value));
+                      setPreAuthData({ ...preAuthData, package_id: e.target.value, requested_amount: pkg?.amount || 0 });
+                    }}
+                    required
+                  >
+                    <option value="">Choose Package...</option>
+                    {packages.map(p => (
+                      <option key={p.id} value={p.id}>{p.package_name} ({p.package_code}) - ₹{p.amount}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text/40 uppercase tracking-wider">Clinical Notes / Diagnosis</label>
+                  <textarea 
+                    className="w-full px-4 py-2 rounded-lg border border-black/10 mt-1"
+                    rows={3}
+                    value={preAuthData.clinical_notes}
+                    onChange={e => setPreAuthData({ ...preAuthData, clinical_notes: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="p-4 bg-alert/5 border border-alert/20 rounded-xl">
+                  <p className="text-xs font-bold text-alert flex items-center gap-2">
+                    <ShieldAlert size={14} />
+                    Compliance Check
+                  </p>
+                  <p className="text-[10px] text-text/60 mt-1">
+                    By submitting, you confirm that the patient is eligible and clinical documentation is verified as per PM-JAY protocols.
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button type="button" onClick={() => setShowPreAuthModal(false)} className="flex-1 py-3 text-text/60 font-bold">Cancel</button>
+                  <button type="submit" className="flex-1 bg-primary text-white py-3 rounded-xl font-bold shadow-lg">Submit to TMS</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -10006,6 +10466,7 @@ export default function App() {
       case 'prescriptions': return <PrescriptionModule hospitalId={user.hospital_id!} />;
       case 'whatsapp': return <WhatsAppManagement hospitalId={user.hospital_id!} />;
       case 'billing': return <BillingManagement hospitalId={user.hospital_id!} />;
+      case 'ayushman': return <AyushmanManagement hospitalId={user.hospital_id!} />;
       case 'statutory': return <StatutoryManagement hospitalId={user.hospital_id!} />;
       case 'birthdeath': return <BirthDeathManagement hospitalId={user.hospital_id!} />;
       case 'discharge': return <DischargeManagement hospitalId={user.hospital_id!} />;
@@ -10205,6 +10666,13 @@ export default function App() {
                 active={activeTab === 'billing'} 
                 onClick={() => setActiveTab('billing')} 
                 hidden={!hasPermission(user.role, 'billing')}
+              />
+              <SidebarItem 
+                icon={ShieldCheck} 
+                label="Ayushman PM-JAY" 
+                active={activeTab === 'ayushman'} 
+                onClick={() => setActiveTab('ayushman')} 
+                hidden={!hasPermission(user.role, 'ayushman')}
               />
               <SidebarItem 
                 icon={ShieldCheck} 

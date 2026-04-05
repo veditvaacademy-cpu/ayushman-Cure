@@ -20,6 +20,11 @@ import appointmentRoutes from "./routes/appointments.js";
 import whatsappRoutes from "./routes/whatsapp.js";
 import safetyRoutes from "./routes/safety.js";
 import reportRoutes from "./routes/reports.js";
+import emergencyRoutes from "./routes/emergency.js";
+import icuRoutes from "./routes/icu.js";
+import dischargeRoutes from "./routes/discharges.js";
+import ambulanceRoutes from "./routes/ambulances.js";
+import ayushmanRoutes from "./routes/ayushman.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +56,11 @@ async function startServer() {
   app.use("/api/whatsapp", whatsappRoutes);
   app.use("/api/safety", safetyRoutes);
   app.use("/api/reports", reportRoutes);
+  app.use("/api/emergency", emergencyRoutes);
+  app.use("/api/icu", icuRoutes);
+  app.use("/api/discharges", dischargeRoutes);
+  app.use("/api/ambulances", ambulanceRoutes);
+  app.use("/api/ayushman", ayushmanRoutes);
 
   // Health check
   app.get("/api/health", (req, res) => {

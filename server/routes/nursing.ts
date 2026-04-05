@@ -56,4 +56,52 @@ router.post("/handover", (req, res) => {
   res.json({ id: info.lastInsertRowid });
 });
 
+router.get("/dashboard", (req, res) => {
+  const hospitalId = req.query.hospitalId;
+  
+  const admissions = db.prepare(`
+    SELECT a.*, p.name as patient_name, p.patient_id_str, d.name as doctor_name, b.ward_name, b.bed_number 
+    FROM ipd_admissions a 
+    JOIN patients p ON a.patient_id = p.id 
+    JOIN doctors d ON a.doctor_id = d.id 
+    JOIN beds b ON a.bed_id = b.id 
+    WHERE a.hospital_id = ? AND a.status = 'Admitted'
+  `).all(hospitalId);
+
+  const vitals = db.prepare(`
+    SELECT v.* FROM ipd_vitals v
+    JOIN ipd_admissions a ON v.admission_id = a.id
+    WHERE a.hospital_id = ? AND a.status = 'Admitted'
+    ORDER BY v.recorded_at DESC
+  `).all(hospitalId);
+
+  const medications = db.prepare(`
+    SELECT m.* FROM ipd_medications m
+    JOIN ipd_admissions a ON m.admission_id = a.id
+    WHERE a.hospital_id = ? AND a.status = 'Admitted' AND m.status = 'Active'
+  `).all(hospitalId);
+
+  const tasks = db.prepare(`
+    SELECT t.* FROM nursing_tasks t
+    JOIN ipd_admissions a ON t.admission_id = a.id
+    WHERE a.hospital_id = ? AND a.status = 'Admitted'
+  `).all(hospitalId);
+
+  const shifts = db.prepare("SELECT * FROM nursing_shifts WHERE hospital_id = ?").all(hospitalId);
+
+  res.json({
+    admissions,
+    vitals,
+    medications,
+    tasks,
+    shifts
+  });
+});
+
+router.get("/icu/vitals-trend/:admissionId", (req, res) => {
+  const { admissionId } = req.params;
+  const trend = db.prepare("SELECT * FROM ipd_vitals WHERE admission_id = ? ORDER BY recorded_at ASC LIMIT 100").all(admissionId);
+  res.json(trend);
+});
+
 export default router;
